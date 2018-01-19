@@ -122,7 +122,8 @@ def run_experiment(hparams):
 	Y_pred = tf.contrib.layers.fully_connected(outputs[:,-1], output_dim, activation_fn = None)
 
 	#cost/loss
-	loss =  tf.reduce_sum(tf.square(Y_pred - Y))
+	#loss =  tf.reduce_sum(tf.square(Y_pred - Y)) #잔차의 제곱 합으로 loss를 잡은거..
+	loss = tf.reduce_sum(tf.multiply(Y, tf.square(Y_pred-Y)))
 
 	#optimizer, train
 	train = tf.train.AdamOptimizer(learning_rate).minimize(loss)
@@ -130,7 +131,8 @@ def run_experiment(hparams):
 	# RMSE
 	targets = tf.placeholder(tf.float32, [None, 1])
 	predictions = tf.placeholder(tf.float32, [None, 1])
-	rmse = tf.sqrt(tf.reduce_mean(tf.square(targets - predictions)))
+	#rmse = tf.sqrt(tf.reduce_mean(tf.square(targets - predictions))) #기존 RMSE
+	rmse = tf.sqrt(tf.reduce_mean(tf.multiply(targets, tf.square(targets - predictions))))
 
 	with tf.Session() as sess:
 		init = tf.global_variables_initializer()
@@ -150,23 +152,24 @@ def run_experiment(hparams):
 		print("RMSE : {}".format(rmse_val))
 
 		#plotting, file 바로 저장
-		#plt.plot(test_Y)
-		#plt.plot(test_predict)
-		#plt.xlabel("Time Period")
-		#plt.ylabel("sum of wait time")
+		plt.figure()        
+		plt.plot(test_Y)
+		plt.plot(test_predict)
+		plt.xlabel("Time Period")
+		plt.ylabel("sum of wait time")
 
-		#plt.savefig('result.png')
-		#credentials = GoogleCredentials.get_application_default()
-		#service = discovery.build('storage', 'v1', credentials=credentials)
+		plt.savefig('im5_LSTM_result1.png')
+		credentials = GoogleCredentials.get_application_default()
+		service = discovery.build('storage', 'v1', credentials=credentials)
 
-		#filename = 'pdm_result.png'
-		#bucket = 'model1-ods-im5-os-stat-wait'
+		filename = 'im5_LSTM_result1.png'
+		bucket = 'model1-ods-im5-os-stat-wait'
 
-		#body = {'name': 'result.png'}
-		#req = service.objects().insert(bucket=bucket, body=body, media_body=filename)
-		#resp = req.execute()
+		body = {'name': 'loss_fixed/im5_LSTM_result1.png'}
+		req = service.objects().insert(bucket=bucket, body=body, media_body=filename)
+		resp = req.execute()
 
-		#plt.show()
+		plt.show()
 
 if __name__ == '__main__':
 
@@ -278,6 +281,7 @@ if __name__ == '__main__':
 	  choices=['JSON', 'CSV', 'EXAMPLE'],
 	  default='JSON'
 	)
+
 
 	args = parser.parse_args()
 

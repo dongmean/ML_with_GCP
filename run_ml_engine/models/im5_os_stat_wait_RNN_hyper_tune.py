@@ -26,6 +26,7 @@ import os
 import matplotlib.pyplot as plt
 import csv
 
+import datetime
 
 
 def MinMaxScaler(data):
@@ -53,7 +54,7 @@ def load_series(filename):
 	except IOError:
 		return None
 
-def run_experiment(hparams):
+def run_experiment(hparams, args):
 
 	data = load_series(hparams.train_files)
 
@@ -67,12 +68,12 @@ def run_experiment(hparams):
 
 
 	# train Parameters
-	seq_length = 10
+	seq_length = args.windowsize
 	data_dim = 52
-	hidden_dim = 10
+	hidden_dim = args.hiddendim
 	output_dim = 1
-	learning_rate = 0.01
-	iterations = 100
+	learning_rate = args.learningrate
+	iterations = args.iteration
 
 	#이쪽으로 csv파일에서 data를 가져오는것만 잘해주면 될듯..! 
 
@@ -112,9 +113,17 @@ def run_experiment(hparams):
 	X = tf.placeholder(tf.float32, [None, seq_length, data_dim])
 	Y = tf.placeholder(tf.float32, [None, 1])
 
-	#build a LSTM network
-	cell = tf.contrib.rnn.BasicLSTMCell(num_units = hidden_dim, state_is_tuple = True, activation = tf.tanh)
-
+	#build a network
+	if(args.rnnCellType == "BasicLSTMCell"):
+		cell = tf.contrib.rnn.BasicLSTMCell(num_units = hidden_dim, state_is_tuple = True, activation = tf.tanh)
+	if(args.rnnCellType == "BasicRNNCell"):
+		cell = tf.contrib.rnn.BasicRNNCell(num_units = hidden_dim)
+	if(args.rnnCellType == "GRUCell"):
+		cell = tf.contrib.rnn.GRUCell(num_units = hidden_dim)        
+	if(args.rnnCellType == "LSTMCell"):
+		cell = tf.contrib.rnn.LSTMCell(num_units = hidden_dim)        
+	if(args.rnnCellType == "LayerNormBasicLSTMCell"):
+		cell = tf.contrib.rnn.LayerNormBasicLSTMCell(num_units = hidden_dim)        
 	#activation??
 
 	outputs, states = tf.nn.dynamic_rnn(cell, X, dtype = tf.float32)
@@ -122,16 +131,20 @@ def run_experiment(hparams):
 	Y_pred = tf.contrib.layers.fully_connected(outputs[:,-1], output_dim, activation_fn = None)
 
 	#cost/loss
-	loss =  tf.reduce_sum(tf.square(Y_pred - Y))
-
+	#loss =  tf.reduce_sum(tf.square(Y_pred - Y)) #잔차의 제곱 합으로 loss를 잡은거..
+	#loss = tf.reduce_sum(tf.multiply(Y, tf.square(Y_pred-Y)))
+	loss = tf.reduce_sum(tf.multiply(tf.square(Y), tf.square(Y_pred-Y)))  
+    
 	#optimizer, train
 	train = tf.train.AdamOptimizer(learning_rate).minimize(loss)
 
 	# RMSE
 	targets = tf.placeholder(tf.float32, [None, 1])
 	predictions = tf.placeholder(tf.float32, [None, 1])
-	rmse = tf.sqrt(tf.reduce_mean(tf.square(targets - predictions)))
-
+	#rmse = tf.sqrt(tf.reduce_mean(tf.square(targets - predictions))) #기존 RMSE
+	rmse = tf.sqrt(tf.reduce_mean(tf.multiply(tf.square(targets), tf.square(targets - predictions))))
+    
+    
 	with tf.Session() as sess:
 		init = tf.global_variables_initializer()
 		sess.run(init)
@@ -147,26 +160,47 @@ def run_experiment(hparams):
 		rmse_val = sess.run(rmse, feed_dict={targets : test_Y, predictions : test_predict})
 
 		print("==========result==========")
-		print("RMSE : {}".format(rmse_val))
-
+		print("==========RMSE : {}==========".format(rmse_val))
+        
+        # for hyperparmeter tunning
+		metric = {}
+		metric['rmse'] = rmse
+        
+		print("==========hyperparameter==========")
+		print("==========window_size : {}==========".format(args.windowsize))
+		print("==========hidden_dim : {}==========".format(args.hiddendim))
+		print("==========learning_rate : {}==========".format(args.learningrate))
+		print("==========iteration : {}==========".format(args.iteration))
+		print("==========rnnCellType : {}==========".format(args.rnnCellType))
+        
+        
 		#plotting, file 바로 저장
-		#plt.plot(test_Y)
-		#plt.plot(test_predict)
-		#plt.xlabel("Time Period")
-		#plt.ylabel("sum of wait time")
+		print("==========save figure==========")
+		plt.figure()        
+		plt.plot(test_Y)
+		plt.plot(test_predict)
+		plt.xlabel("Time Period")
+		plt.ylabel("sum of wait time")
 
-		#plt.savefig('result.png')
-		#credentials = GoogleCredentials.get_application_default()
-		#service = discovery.build('storage', 'v1', credentials=credentials)
+		now = datetime.datetime.now()
+		nowDatetime = now.strftime('%Y-%m-%d %H:%M:%S')
+        
+		png_name = 'im5_LSTM_result'+nowDatetime+'.png'
+        
+		plt.savefig(png_name)
+		credentials = GoogleCredentials.get_application_default()
+		service = discovery.build('storage', 'v1', credentials=credentials)
 
-		#filename = 'pdm_result.png'
-		#bucket = 'model1-ods-im5-os-stat-wait'
+		filename = png_name
+		bucket = 'model1-ods-im5-os-stat-wait'
 
-		#body = {'name': 'result.png'}
-		#req = service.objects().insert(bucket=bucket, body=body, media_body=filename)
-		#resp = req.execute()
+		png_dir = 'hyper_loss_fixed2/im5_result'+nowDatetime+'.png'
+        
+		body = {'name': png_dir}
+		req = service.objects().insert(bucket=bucket, body=body, media_body=filename)
+		resp = req.execute()
 
-		#plt.show()
+		plt.show()
 
 if __name__ == '__main__':
 
@@ -278,7 +312,34 @@ if __name__ == '__main__':
 	  choices=['JSON', 'CSV', 'EXAMPLE'],
 	  default='JSON'
 	)
-
+    
+    # Training arguments
+	parser.add_argument(
+		'--windowsize',
+		type=int,
+		required=True
+	)
+	parser.add_argument(
+		'--hiddendim',
+		type=int,
+		required=True
+	)
+	parser.add_argument(
+		'--learningrate',
+		type=float,
+		required=True
+	)
+	parser.add_argument(
+		'--iteration',
+		type=int,
+		required=True
+	)
+	parser.add_argument(
+		'--rnnCellType',
+		type=str,
+		required=True
+	)
+    
 	args = parser.parse_args()
 
 	# Set python level verbosity
@@ -289,4 +350,4 @@ if __name__ == '__main__':
 
 	# Run the training job
 	hparams=hparam.HParams(**args.__dict__)
-	run_experiment(hparams)
+	run_experiment(hparams, args)
