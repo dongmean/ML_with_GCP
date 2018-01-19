@@ -2,7 +2,7 @@ trainingInput:
   hyperparameters:
     goal: MINIMIZE
     hyperparameterMetricTag: rmse
-    maxTrials: 200
+    maxTrials: 100
     maxParallelTrials: 15
     params:
       - parameterName: windowsize #window_size

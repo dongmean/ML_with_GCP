@@ -68,7 +68,7 @@ def run_experiment(hparams):
 
 	# train Parameters
 	seq_length = 10
-	data_dim = 52
+	data_dim = 51
 	hidden_dim = 10
 	output_dim = 1
 	learning_rate = 0.01
@@ -78,7 +78,7 @@ def run_experiment(hparams):
 
 	#normalize
 	xy = MinMaxScaler(data)
-	x = xy
+	x = xy[:,0:-1]
 	y = xy[:,[-1]]
 
 	#build a dataset
@@ -134,6 +134,14 @@ def run_experiment(hparams):
 	#rmse = tf.sqrt(tf.reduce_mean(tf.square(targets - predictions))) #기존 RMSE
 	rmse = tf.sqrt(tf.reduce_mean(tf.multiply(targets, tf.square(targets - predictions))))
 
+	#zero = lambda: tf.constant(0)
+	#one = lambda: tf.constant(1)
+	#acuracy = tf.reduce_sum(tf.multiply(tf.cond(tf.less(targets, 0.2), zero, one) , tf.cond(tf.less(predictions, 0.2), zero, one)))
+	#total = tf.reduce_sum(tf.cond(tf.less(targets, 0.2), zero, one))
+
+	accuracy = 0
+	total = 0
+	   
 	with tf.Session() as sess:
 		init = tf.global_variables_initializer()
 		sess.run(init)
@@ -146,11 +154,24 @@ def run_experiment(hparams):
 
 		#Test step
 		test_predict = sess.run(Y_pred, feed_dict={X: test_X})
-		rmse_val = sess.run(rmse, feed_dict={targets : test_Y, predictions : test_predict})
+		rmse_val = sess.run([rmse], feed_dict={targets : test_Y, predictions : test_predict})
 
 		print("==========result==========")
 		print("RMSE : {}".format(rmse_val))
+      
 
+		#print(targets)
+		#print(predictions)   
+		for i in range(len(test_Y)):
+			
+			if (test_Y[i] > 0.2):
+				total +=1
+			if (test_Y[i] > 0.2 and test_predict[i] > 0.2):
+				accuracy += 1
+                
+		print("accuracy : {}".format(accuracy/total))
+                
+        
 		#plotting, file 바로 저장
 		plt.figure()        
 		plt.plot(test_Y)
@@ -165,7 +186,7 @@ def run_experiment(hparams):
 		filename = 'im5_LSTM_result1.png'
 		bucket = 'model1-ods-im5-os-stat-wait'
 
-		body = {'name': 'loss_fixed/im5_LSTM_result1.png'}
+		body = {'name': 'with_accuracy/im5_LSTM_result1.png'}
 		req = service.objects().insert(bucket=bucket, body=body, media_body=filename)
 		resp = req.execute()
 

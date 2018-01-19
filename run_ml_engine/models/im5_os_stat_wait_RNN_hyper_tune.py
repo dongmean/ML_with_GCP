@@ -69,7 +69,7 @@ def run_experiment(hparams, args):
 
 	# train Parameters
 	seq_length = args.windowsize
-	data_dim = 52
+	data_dim = 51
 	hidden_dim = args.hiddendim
 	output_dim = 1
 	learning_rate = args.learningrate
@@ -79,7 +79,7 @@ def run_experiment(hparams, args):
 
 	#normalize
 	xy = MinMaxScaler(data)
-	x = xy
+	x = xy[:,0:-1]
 	y = xy[:,[-1]]
 
 	#build a dataset
@@ -143,7 +143,7 @@ def run_experiment(hparams, args):
 	predictions = tf.placeholder(tf.float32, [None, 1])
 	#rmse = tf.sqrt(tf.reduce_mean(tf.square(targets - predictions))) #기존 RMSE
 	rmse = tf.sqrt(tf.reduce_mean(tf.multiply(tf.square(targets), tf.square(targets - predictions))))
-    
+	#accuracy = 
     
 	with tf.Session() as sess:
 		init = tf.global_variables_initializer()
@@ -194,7 +194,7 @@ def run_experiment(hparams, args):
 		filename = png_name
 		bucket = 'model1-ods-im5-os-stat-wait'
 
-		png_dir = 'hyper_loss_fixed2/im5_result'+nowDatetime+'.png'
+		png_dir = 'data_repreprocessing/im5_result'+nowDatetime+'.png'
         
 		body = {'name': png_dir}
 		req = service.objects().insert(bucket=bucket, body=body, media_body=filename)
