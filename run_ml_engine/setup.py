@@ -1,7 +1,7 @@
 from setuptools import find_packages
 from setuptools import setup
 
-REQUIRED_PACKAGES = ['Pillow>=1.0','matplotlib', ]
+REQUIRED_PACKAGES = ['Pillow>=1.0','matplotlib', 'GPy', 'sklearn']
 
 setup(
     name='trainer',

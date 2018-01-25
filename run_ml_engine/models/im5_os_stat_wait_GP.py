@@ -1,6 +1,3 @@
-# ----------------------------------------
-# Library used for command parsing (maybe)
-# ----------------------------------------
 import argparse
 import os
 from tensorflow.contrib.learn.python.learn.utils import (
@@ -19,15 +16,19 @@ from googleapiclient import discovery
 from oauth2client.client import GoogleCredentials
 
 import tensorflow as tf
-import numpy as np
 import matplotlib as mpl
 mpl.use('agg')
+
 import os
 import matplotlib.pyplot as plt
 import csv
 
-import datetime
+import numpy as np
+import GPy
 
+from sklearn.preprocessing import normalize
+
+GPy.plotting.change_plotting_library("matplotlib")
 
 def MinMaxScaler(data):
 	''' Min Max Normalization
@@ -54,8 +55,7 @@ def load_series(filename):
 	except IOError:
 		return None
 
-def run_experiment(hparams, args):
-
+def run_experiment(hparams):
 	data = load_series(hparams.train_files)
 
 	print("=====run experiment=====")
@@ -64,144 +64,124 @@ def run_experiment(hparams, args):
 	data = np.array(data)
 	data = np.delete(data, (0), axis=0)
 	data = data.astype(float)
-	print(data)
+	#print(data)
 
-
-	# train Parameters
-	seq_length = args.windowsize
-	data_dim = 51
-	hidden_dim = args.hiddendim
-	output_dim = 1
-	learning_rate = args.learningrate
-	iterations = args.iteration
-
-	#이쪽으로 csv파일에서 data를 가져오는것만 잘해주면 될듯..! 
-
-	#normalize
-	xy = MinMaxScaler(data)
+	#standardization
+	#xy = MinMaxScaler(data)
+    
+	xy = data
 	x = xy[:,0:-1]
-	y = xy[:,[-1]]
+	y = xy[:,-1]
 
 	#build a dataset
+	print("========data building started========")
+
 	data_X = []
 	data_Y = []
     
-	print("=====data setting started=====")
+	size = int(len(y)*0.007)#일단 체크용으로 1/10 정도의 데이터로만/ 다시 전체 데이터로 만듬
     
-	for i in range(0, len(y) - seq_length):
-		_x = x[i:i+seq_length]
-	 	_y = y[i+seq_length-1] #last sum_wait_time
-
-	 	#if (i%50 == 0):
-			#print(_x,"->",_y)
+	for i in range(4300, size+4300): #4000번째 index 부터 시작
+		_x = x[i]
+		_y = y[i] 
 
 		data_X.append(_x)
 		data_Y.append(_y)
+    
+	data_Y = np.reshape(data_Y, (-1, 1))
+	#print(data_X)
+	data_X = np.array(data_X)
+	data_Y = np.array(data_Y)
+    
+	#normalization, l1 norm (anomaly에 대해 크게 반응하지 않으려고..?)
+	data_X = normalize(data_X, axis=0, norm='l1')
+	data_Y = normalize(data_Y, axis=0, norm='l1')
+    
+	print(data_Y.ndim)
+	print(data_Y)
 
-	print("=====data setting finished=====")
-
+	print("=====train/test split started=====")
 	#train/test split
-	train_size = int(len(data_Y)*0.7)
+	train_size = int(len(data_Y)*0.8)
 	test_size = len(data_Y) - train_size
 
 	train_X, test_X = np.array(data_X[0:train_size]), np.array(data_X[train_size:len(data_X)])
 	train_Y, test_Y = np.array(data_Y[0:train_size]), np.array(data_Y[train_size:len(data_X)])
-
-	print("=====train/test splitted=====")
-
-	#input place holders
-	X = tf.placeholder(tf.float32, [None, seq_length, data_dim])
-	Y = tf.placeholder(tf.float32, [None, 1])
-
-	#build a network
-	if(args.rnnCellType == "BasicLSTMCell"):
-		cell = tf.contrib.rnn.BasicLSTMCell(num_units = hidden_dim, state_is_tuple = True, activation = tf.tanh)
-	if(args.rnnCellType == "BasicRNNCell"):
-		cell = tf.contrib.rnn.BasicRNNCell(num_units = hidden_dim)
-	if(args.rnnCellType == "GRUCell"):
-		cell = tf.contrib.rnn.GRUCell(num_units = hidden_dim)        
-	if(args.rnnCellType == "LSTMCell"):
-		cell = tf.contrib.rnn.LSTMCell(num_units = hidden_dim)        
-	if(args.rnnCellType == "LayerNormBasicLSTMCell"):
-		cell = tf.contrib.rnn.LayerNormBasicLSTMCell(num_units = hidden_dim)        
-	#activation??
-
-	outputs, states = tf.nn.dynamic_rnn(cell, X, dtype = tf.float32)
-
-	Y_pred = tf.contrib.layers.fully_connected(outputs[:,-1], output_dim, activation_fn = None)
-
-	#cost/loss
-	#loss =  tf.reduce_sum(tf.square(Y_pred - Y)) #잔차의 제곱 합으로 loss를 잡은거..
-	#loss = tf.reduce_sum(tf.multiply(Y, tf.square(Y_pred-Y)))
-	loss = tf.reduce_sum(tf.multiply(tf.square(Y), tf.square(Y_pred-Y)))  
     
-	#optimizer, train
-	train = tf.train.AdamOptimizer(learning_rate).minimize(loss)
-
-	# RMSE
-	targets = tf.placeholder(tf.float32, [None, 1])
-	predictions = tf.placeholder(tf.float32, [None, 1])
-	#rmse = tf.sqrt(tf.reduce_mean(tf.square(targets - predictions))) #기존 RMSE
-	rmse = tf.sqrt(tf.reduce_mean(tf.multiply(tf.square(targets), tf.square(targets - predictions))))
-	#accuracy = 
     
-	with tf.Session() as sess:
-		init = tf.global_variables_initializer()
-		sess.run(init)
+	#전체 데이터로 모델을 만든 후, 그 데이터가 모델의 CI를 넘는지 체크 해보면 됨
 
-		#Training step
-		for i in range(iterations):
-			_, step_loss = sess.run([train, loss], feed_dict={X : train_X, Y : train_Y})
-			if(i%10 ==0):
-				print("step : {} , loss: {}\n".format(i, step_loss))
+	#hyperparameter
+	input_dim = 52
+	variance = 1
+	lengthscale = 0.2
 
-		#Test step
-		test_predict = sess.run(Y_pred, feed_dict={X: test_X})
-		rmse_val = sess.run(rmse, feed_dict={targets : test_Y, predictions : test_predict})
+	#kernel
+	kernel = GPy.kern.RBF(input_dim, variance = variance, lengthscale = lengthscale)
 
-		print("==========result==========")
-		print("==========RMSE : {}==========".format(rmse_val))
-        
-        # for hyperparmeter tunning
-		metric = {}
-		metric['rmse'] = rmse
-        
-		print("==========hyperparameter==========")
-		print("==========window_size : {}==========".format(args.windowsize))
-		print("==========hidden_dim : {}==========".format(args.hiddendim))
-		print("==========learning_rate : {}==========".format(args.learningrate))
-		print("==========iteration : {}==========".format(args.iteration))
-		print("==========rnnCellType : {}==========".format(args.rnnCellType))
-        
-        
-		#plotting, file 바로 저장
-		print("==========save figure==========")
-		plt.figure()        
-		plt.plot(test_Y)
-		plt.plot(test_predict)
-		plt.xlabel("Time Period")
-		plt.ylabel("sum of wait time")
 
-		now = datetime.datetime.now()
-		nowDatetime = now.strftime('%Y-%m-%d %H:%M:%S')
-        
-		png_name = 'im5_LSTM_result'+nowDatetime+'.png'
-        
-		plt.savefig(png_name)
-		credentials = GoogleCredentials.get_application_default()
-		service = discovery.build('storage', 'v1', credentials=credentials)
+	#modeling
+	print("========modeling started========")
 
-		filename = png_name
-		bucket = 'model1-ods-im5-os-stat-wait'
+	model = GPy.models.GPRegression(data_X, data_Y, kernel)
+	model.optimize(messages = True)
+	print(model)
 
-		png_dir = 'data_repreprocessing/im5_result'+nowDatetime+'.png'
-        
-		body = {'name': png_dir}
-		req = service.objects().insert(bucket=bucket, body=body, media_body=filename)
-		resp = req.execute()
 
-		plt.show()
+	#predict
+	print("========predicting started========")
 
+	Y_pred, Var_pred = model.predict(data_X)
+	print("========Y_pred========")
+	print(Y_pred)
+	print("========Var_pred========")
+	print(np.sqrt(Var_pred)) ###
+    
+	#CI를 이용한 anomaly counting
+	print("========counting anomaly started========")
+	total_anomaly = 0
+	anomaly_indexes = []
+	anomalys = []
+    
+	test_size = len(data_Y)
+	print("test_size : {}".format(test_size))
+	for i in range(test_size):
+		if (Y_pred[i]-1.96*np.sqrt(Var_pred[i]) > data_Y[i] or Y_pred[i]+1.96*np.sqrt(Var_pred[i]) < data_Y[i]):
+			total_anomaly +=1
+			anomaly_indexes.append(i)
+			anomalys.append(data_Y[i])
+    
+	print("total anomaly : {}".format(total_anomaly))
+
+	print("anomaly_indexes")
+	print(anomaly_indexes)
+
+	print("========saving graph started========")
+	#plotting, file 바로 저장
+    
+	plt.figure();
+	plt.plot(data_Y, '.'); #파란색
+	plt.plot(Y_pred, '.'); #주황색
+    
+	plt.plot(np.add(Y_pred, 1.96*np.sqrt(Var_pred)))
+	plt.plot(np.add(Y_pred, -1.96*np.sqrt(Var_pred)))
+    
+	plt.xlabel("Time Index")
+	plt.ylabel("sum of wait time")
+    
+	plt.savefig('GP_RBF_only_new_6_small_range.png')
+	credentials = GoogleCredentials.get_application_default()
+	service = discovery.build('storage', 'v1', credentials=credentials)
+
+	filename = 'GP_RBF_only_new_6_small_range.png'
+	bucket = 'im5-os-stat-wait-gp'
+
+	body = {'name': 'RBF_only/GP_RBF_only_new_6_small_range.png'}
+	req = service.objects().insert(bucket=bucket, body=body, media_body=filename)
+	resp = req.execute()
+
+	plt.show()
+    
 if __name__ == '__main__':
 
 	# ---------------------------------------------
@@ -312,34 +292,8 @@ if __name__ == '__main__':
 	  choices=['JSON', 'CSV', 'EXAMPLE'],
 	  default='JSON'
 	)
-    
-    # Training arguments
-	parser.add_argument(
-		'--windowsize',
-		type=int,
-		required=True
-	)
-	parser.add_argument(
-		'--hiddendim',
-		type=int,
-		required=True
-	)
-	parser.add_argument(
-		'--learningrate',
-		type=float,
-		required=True
-	)
-	parser.add_argument(
-		'--iteration',
-		type=int,
-		required=True
-	)
-	parser.add_argument(
-		'--rnnCellType',
-		type=str,
-		required=True
-	)
-    
+
+
 	args = parser.parse_args()
 
 	# Set python level verbosity
@@ -350,4 +304,4 @@ if __name__ == '__main__':
 
 	# Run the training job
 	hparams=hparam.HParams(**args.__dict__)
-	run_experiment(hparams, args)
+	run_experiment(hparams)

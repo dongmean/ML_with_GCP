@@ -103,8 +103,8 @@ def run_experiment(hparams):
 	train_size = int(len(data_Y)*0.7)
 	test_size = len(data_Y) - train_size
 
-	train_X, test_X = np.array(data_X[0:train_size]), np.array(data_X[test_size:len(data_X)])
-	train_Y, test_Y = np.array(data_Y[0:train_size]), np.array(data_Y[test_size:len(data_X)])
+	train_X, test_X = np.array(data_X[0:train_size]), np.array(data_X[train_size:len(data_X)])
+	train_Y, test_Y = np.array(data_Y[0:train_size]), np.array(data_Y[train_size:len(data_X)])
 
 	print("=====train/test splitted=====")
 
