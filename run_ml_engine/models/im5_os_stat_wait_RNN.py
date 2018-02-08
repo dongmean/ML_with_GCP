@@ -27,7 +27,6 @@ import matplotlib.pyplot as plt
 import csv
 
 
-
 def MinMaxScaler(data):
 	''' Min Max Normalization
 	Parameters, Returns
