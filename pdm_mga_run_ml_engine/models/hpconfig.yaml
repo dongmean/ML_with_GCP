@@ -1,0 +1,35 @@
+trainingInput:
+  hyperparameters:
+    goal: MINIMIZE
+    hyperparameterMetricTag: rmse
+    maxTrials: 100
+    maxParallelTrials: 15
+    params:
+      - parameterName: windowsize #window_size
+        type: INTEGER
+        minValue: 7
+        maxValue: 12
+        scaleType: UNIT_LINEAR_SCALE
+      - parameterName: hiddendim #hidden_dim
+        type: INTEGER
+        minValue: 7
+        maxValue: 12
+        scaleType: UNIT_LINEAR_SCALE
+      - parameterName: learningrate #learning_rate
+        type: DOUBLE
+        minValue: 0.001
+        maxValue: 0.1
+        scaleType: UNIT_LOG_SCALE
+      - parameterName: iteration #iteration
+        type: INTEGER
+        minValue: 100
+        maxValue: 500
+        scaleType: UNIT_LINEAR_SCALE
+      - parameterName: rnnCellType
+        type: CATEGORICAL
+        categoricalValues:
+        - BasicLSTMCell
+        - BasicRNNCell
+        - GRUCell
+        - LSTMCell
+        - LayerNormBasicLSTMCell
